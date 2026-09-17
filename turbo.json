@@ -1,0 +1,37 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env"],
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "env": [
+        "API_PORT",
+        "WEB_ORIGIN",
+        "API_INTERNAL_URL",
+        "DATABASE_URL",
+        "REDIS_URL",
+        "SESSION_SECRET",
+        "DEMO_AUTH_ENABLED"
+      ]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["API_INTERNAL_URL", "DATABASE_URL"]
+    },
+    "lint": { "dependsOn": ["^lint"] },
+    "typecheck": { "dependsOn": ["^typecheck"] },
+    "test": { "cache": false, "outputs": [] },
+    "@forgeboard/api#test": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    },
+    "@forgeboard/web#test": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "outputs": []
+    }
+  }
+}

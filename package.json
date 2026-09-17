@@ -1,0 +1,30 @@
+{
+  "name": "forgeboard",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": "\u003e=22.12.0 \u003c23 || \u003e=24.0.0",
+    "pnpm": "\u003e=10 \u003c11"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "db:generate": "pnpm --filter @forgeboard/api db:generate",
+    "db:migrate": "pnpm --filter @forgeboard/api db:migrate",
+    "db:deploy": "pnpm --filter @forgeboard/api db:deploy",
+    "db:seed": "pnpm --filter @forgeboard/api db:seed",
+    "db:studio": "pnpm --filter @forgeboard/api db:studio"
+  },
+  "devDependencies": {
+    "prettier": "3.9.7",
+    "turbo": "2.10.13",
+    "typescript": "^5.9.3"
+  }
+}
