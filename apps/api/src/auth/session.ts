@@ -12,9 +12,14 @@ export function sessionSecret() {
   return secret;
 }
 
-export function signSession(userId: string, secret: string, now = Date.now()) {
+export function signSession(
+  userId: string,
+  secret: string,
+  now = Date.now(),
+  lifetime = SESSION_SECONDS * 1000,
+) {
   const payload = Buffer.from(
-    JSON.stringify({ userId, expires: now + SESSION_SECONDS * 1000 }),
+    JSON.stringify({ userId, expires: now + lifetime }),
   ).toString('base64url');
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
 }
@@ -24,6 +29,20 @@ export function readSession(
   secret: string,
   now = Date.now(),
 ): string | null {
+  return readSessionClaims(token, secret, now)?.userId ?? null;
+}
+
+export function realtimeSecret() {
+  return createHmac('sha256', sessionSecret())
+    .update('forgeboard:realtime:v1')
+    .digest('hex');
+}
+
+export function readSessionClaims(
+  token: unknown,
+  secret: string,
+  now = Date.now(),
+): { userId: string; expires: number } | null {
   if (typeof token !== 'string' || token.length > 1024) return null;
   const [payload, signature, extra] = token.split('.');
   if (!payload || !signature || extra) return null;
@@ -39,7 +58,7 @@ export function readSession(
     return typeof data.userId === 'string' &&
       typeof data.expires === 'number' &&
       data.expires > now
-      ? data.userId
+      ? { userId: data.userId, expires: data.expires }
       : null;
   } catch {
     return null;

@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: forgeboard
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: forgeboard
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U forgeboard -d forgeboard"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      CI: 'true'
+      DATABASE_URL: postgresql://forgeboard:ci_only_password@localhost:5432/forgeboard?schema=public
+      REDIS_URL: redis://localhost:6379
+      SESSION_SECRET: ci-only-disposable-session-secret-never-use-in-production
+      DEMO_AUTH_ENABLED: 'true'
+      WEB_ORIGIN: http://localhost:3000
+      API_PORT: '4000'
+      API_INTERNAL_URL: http://127.0.0.1:4000
+      NEXT_PUBLIC_REALTIME_URL: http://localhost:4000/collaboration
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm build
+      - run: pnpm test:api
+      - run: pnpm --filter @forgeboard/web exec playwright install --with-deps chromium
+      - run: pnpm test:browser
+      # Disposable CI database only; no production credentials or database access.
+      - name: Migrate and seed CI database
+        working-directory: apps/api
+        run: |
+          pnpm exec prisma migrate deploy
+          node prisma/seed.cjs
+      - run: pnpm test:e2e

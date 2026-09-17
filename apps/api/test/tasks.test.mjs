@@ -7,6 +7,10 @@ test('task creation rejects assignees outside the workspace before writing', asy
   let wrote = false;
   const tx = {
     column: {
+      findFirstOrThrow: async () => ({
+        boardId: 'board',
+        board: { projectId: 'project', project: { archivedAt: null } },
+      }),
       findFirst: async () => ({
         boardId: 'board',
         board: { project: { archivedAt: null } },
@@ -23,6 +27,7 @@ test('task creation rejects assignees outside the workspace before writing', asy
   const service = new TasksService(
     { $transaction: (fn) => fn(tx) },
     { invalidate: async () => {} },
+    { publish: async () => assert.fail('failed writes must not publish') },
   );
   await assert.rejects(
     service.create('workspace', 'actor', {
@@ -31,6 +36,45 @@ test('task creation rejects assignees outside the workspace before writing', asy
       assigneeIds: ['foreign-member'],
     }),
     /Assignees must belong/,
+  );
+  assert.equal(wrote, false);
+});
+
+test('task creation rechecks archival after taking the board lock', async () => {
+  let wrote = false;
+  const tx = {
+    column: {
+      // The initial read can race with an archive transaction.
+      findFirst: async () => ({
+        boardId: 'board',
+        board: { project: { archivedAt: null } },
+      }),
+      // PostgreSQL reads again after the shared board-row lock is acquired.
+      findFirstOrThrow: async () => ({
+        boardId: 'board',
+        board: {
+          projectId: 'project',
+          project: { archivedAt: new Date('2026-01-01') },
+        },
+      }),
+    },
+    board: { update: async () => ({}) },
+    task: {
+      count: async () =>
+        assert.fail('archived project must not count or write'),
+      create: async () => {
+        wrote = true;
+      },
+    },
+  };
+  const service = new TasksService(
+    { $transaction: (fn) => fn(tx) },
+    { invalidate: async () => assert.fail('failed write must not invalidate') },
+    { publish: async () => assert.fail('failed write must not publish') },
+  );
+  await assert.rejects(
+    service.create('workspace', 'actor', { title: 'Task', columnId: 'column' }),
+    /Restore this project/,
   );
   assert.equal(wrote, false);
 });
@@ -46,6 +90,10 @@ test('moving a task persists contiguous ordering and logs the move in one transa
   let locked = false;
   const tx = {
     column: {
+      findFirstOrThrow: async () => ({
+        boardId: 'board',
+        board: { projectId: 'project', project: { archivedAt: null } },
+      }),
       findFirst: async () => ({
         boardId: 'board',
         name: 'Done',
@@ -87,8 +135,17 @@ test('moving a task persists contiguous ordering and logs the move in one transa
         invalidated = true;
       },
     },
+    {
+      publish: async (event) => {
+        assert.equal(invalidated, true);
+        assert.equal(event.kind, 'task.moved');
+      },
+    },
   );
-  service.detail = async () => ({ ...tasks[0], column: { boardId: 'board' } });
+  service.detail = async () => ({
+    ...tasks[0],
+    column: { boardId: 'board', board: { project: { id: 'project' } } },
+  });
   await service.move('workspace', 'actor', 'a', {
     columnId: 'done',
     beforeTaskId: 'c',

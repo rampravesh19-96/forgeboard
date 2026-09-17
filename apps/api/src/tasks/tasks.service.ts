@@ -8,6 +8,7 @@ import {
 import { Prisma, ActivityKind } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { taskInclude } from '../projects/projects.service';
 import { CreateTaskDto, UpdateTaskDto, MoveTaskDto } from './task.dto';
 
@@ -16,6 +17,7 @@ export class TasksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly realtime: RealtimeGateway,
   ) {}
   async detail(workspaceId: string, id: string) {
     const task = await this.prisma.task.findFirst({
@@ -76,16 +78,20 @@ export class TasksService {
       include: { board: { include: { project: true } } },
     });
     if (!column) throw new NotFoundException('Column not found.');
-    if (column.board.project.archivedAt)
-      throw new ConflictException(
-        'Restore this project before changing tasks.',
-      );
     // A board row update serializes concurrent ordering operations within this transaction.
     await tx.board.update({
       where: { id: column.boardId },
       data: { version: { increment: 1 } },
     });
-    return column;
+    const fresh = await tx.column.findFirstOrThrow({
+      where: { id: columnId },
+      include: { board: { include: { project: true } } },
+    });
+    if (fresh.board.project.archivedAt)
+      throw new ConflictException(
+        'Restore this project before changing tasks.',
+      );
+    return fresh;
   }
   private async reorder(
     tx: Prisma.TransactionClient,
@@ -112,7 +118,7 @@ export class TasksService {
   }
   async create(workspaceId: string, actorId: string, dto: CreateTaskDto) {
     const task = await this.prisma.$transaction(async (tx) => {
-      await this.lock(tx, workspaceId, dto.columnId);
+      const column = await this.lock(tx, workspaceId, dto.columnId);
       await this.members(tx, workspaceId, dto.assigneeIds ?? []);
       const { assigneeIds, dueDate, ...data } = dto;
       const count = await tx.task.count({ where: { columnId: dto.columnId } });
@@ -144,10 +150,16 @@ export class TasksService {
           'TASK_ASSIGNED',
           `assigned ${assigneeIds.length} teammate${assigneeIds.length === 1 ? '' : 's'} to “${created.title}”`,
         );
-      return created;
+      return { created, projectId: column.board.projectId };
     });
     await this.cache.invalidate(workspaceId);
-    return task;
+    await this.realtime.publish({
+      workspaceId,
+      projectId: task.projectId,
+      taskId: task.created.id,
+      kind: 'task.created',
+    });
+    return task.created;
   }
   async update(
     workspaceId: string,
@@ -196,6 +208,12 @@ export class TasksService {
       return updated;
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: current.column.board.project.id,
+      taskId: id,
+      kind: 'task.updated',
+    });
     return task;
   }
   async move(
@@ -230,9 +248,15 @@ export class TasksService {
         'TASK_MOVED',
         `${fresh.columnId === dto.columnId ? 'reordered' : `moved to ${target.name}:`} “${updated.title}”`,
       );
-      return updated;
+      return tx.task.findUniqueOrThrow({ where: { id }, include: taskInclude });
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: current.column.board.project.id,
+      taskId: id,
+      kind: 'task.moved',
+    });
     return task;
   }
   async remove(workspaceId: string, actorId: string, id: string) {
@@ -252,6 +276,12 @@ export class TasksService {
       );
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: task.column.board.project.id,
+      taskId: id,
+      kind: 'task.deleted',
+    });
     return { success: true };
   }
   async addComment(
@@ -278,6 +308,12 @@ export class TasksService {
       return created;
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: task.column.board.project.id,
+      taskId: id,
+      kind: 'comment.added',
+    });
     return comment;
   }
   async deleteComment(
@@ -304,6 +340,12 @@ export class TasksService {
       );
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: task.column.board.project.id,
+      taskId: taskId,
+      kind: 'comment.deleted',
+    });
     return { success: true };
   }
 }

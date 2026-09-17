@@ -15,6 +15,7 @@ import {
   SESSION_SECONDS,
   signSession,
   sessionSecret,
+  realtimeSecret,
 } from './session';
 
 @Controller('auth')
@@ -57,6 +58,15 @@ export class AuthController {
         ...workspace,
         role,
       })),
+    };
+  }
+  // Cookie stays HttpOnly and same-origin. Only this short-lived, purpose-bound
+  // ticket crosses to a separately hosted WebSocket server, in handshake auth.
+  @Post('realtime')
+  @UseGuards(AuthGuard)
+  realtime(@Req() request: AuthRequest) {
+    return {
+      ticket: signSession(request.userId, realtimeSecret(), Date.now(), 60_000),
     };
   }
   @Post('logout')

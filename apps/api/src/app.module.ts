@@ -5,10 +5,12 @@ import { AuthModule } from './auth/auth.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
     DatabaseModule,
+    RealtimeModule,
     AuthModule,
     WorkspacesModule,
     ProjectsModule,

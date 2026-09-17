@@ -39,6 +39,33 @@ function TaskForm({
   const [columnId, setColumnId] = useState(
     task?.columnId ?? defaultColumnId ?? columns[0]?.id ?? '',
   );
+  const fingerprint = JSON.stringify(
+    task && [
+      task.title,
+      task.description,
+      task.priority,
+      task.dueDate,
+      task.columnId,
+      task.assignees.map((a) => a.memberId).sort(),
+    ],
+  );
+  const [source, setSource] = useState(fingerprint);
+  const [dirty, setDirty] = useState(false);
+  const loadLatest = () => {
+    if (!task) return;
+    setTitle(task.title);
+    setDescription(task.description);
+    setPriority(task.priority);
+    setDueDate(task.dueDate?.slice(0, 10) ?? '');
+    setColumnId(task.columnId);
+    setAssigneeIds(task.assignees.map((a) => a.memberId));
+    setSource(fingerprint);
+    setDirty(false);
+  };
+  // Reset pristine fields during render when refreshed data changes. Preserve a
+  // local draft and require an explicit reload if someone changed those fields.
+  if (source !== fingerprint && !dirty) loadLatest();
+  const remoteChange = source !== fingerprint;
   const members = useQuery({
     queryKey: keys.members(workspace.id),
     queryFn: () => api<Member[]>(`/workspaces/${workspace.id}/members`),
@@ -70,6 +97,7 @@ function TaskForm({
         });
     },
     onSuccess: async () => {
+      setDirty(false);
       await client.invalidateQueries({
         queryKey: keys.workspace(workspace.id),
       });
@@ -82,11 +110,29 @@ function TaskForm({
   });
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (remoteChange) return;
     mutation.mutate();
   };
   const archived = Boolean(task?.column.board.project.archivedAt);
   return (
-    <form onSubmit={submit} className="form-stack">
+    <form
+      onSubmit={submit}
+      onChange={() => setDirty(true)}
+      className="form-stack"
+    >
+      {remoteChange && (
+        <div role="alert" className="form-error">
+          This task changed elsewhere. Your draft is preserved; load the latest
+          version before saving.{' '}
+          <button
+            type="button"
+            className="button secondary"
+            onClick={loadLatest}
+          >
+            Load latest version
+          </button>
+        </div>
+      )}
       <fieldset
         disabled={mutation.isPending || archived}
         className="task-fields"
@@ -195,7 +241,10 @@ function TaskForm({
           <button
             className="button"
             disabled={
-              mutation.isPending || members.isPending || Boolean(members.error)
+              remoteChange ||
+              mutation.isPending ||
+              members.isPending ||
+              Boolean(members.error)
             }
           >
             {mutation.isPending

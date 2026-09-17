@@ -5,6 +5,21 @@ export interface HealthResponse {
 }
 
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export interface WorkspaceChange {
+  eventId: string;
+  workspaceId: string;
+  projectId: string;
+  taskId?: string;
+  kind:
+    | 'task.created'
+    | 'task.updated'
+    | 'task.moved'
+    | 'task.deleted'
+    | 'comment.added'
+    | 'comment.deleted'
+    | 'project.created'
+    | 'project.updated';
+}
 export interface User {
   id: string;
   name: string;

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateProjectDto, UpdateProjectDto } from './project.dto';
 import { Prisma } from '@prisma/client';
 
@@ -32,6 +33,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly realtime: RealtimeGateway,
   ) {}
   async list(workspaceId: string) {
     const projects = await this.prisma.project.findMany({
@@ -93,6 +95,11 @@ export class ProjectsService {
       return created;
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: project.id,
+      kind: 'project.created',
+    });
     return project;
   }
   async update(
@@ -104,6 +111,11 @@ export class ProjectsService {
     await this.detail(workspaceId, id);
     const { archived, ...data } = dto;
     const project = await this.prisma.$transaction(async (tx) => {
+      // Use the same lock as task mutations, including archive/restore.
+      await tx.board.update({
+        where: { projectId: id },
+        data: { version: { increment: 1 } },
+      });
       const updated = await tx.project.update({
         where: { id, workspaceId },
         data: {
@@ -124,6 +136,11 @@ export class ProjectsService {
       return updated;
     });
     await this.cache.invalidate(workspaceId);
+    await this.realtime.publish({
+      workspaceId,
+      projectId: id,
+      kind: 'project.updated',
+    });
     return project;
   }
 }

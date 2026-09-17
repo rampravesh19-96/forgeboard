@@ -7,8 +7,11 @@
       "persistent": true,
       "env": [
         "API_PORT",
+        "PORT",
+        "API_HOST",
         "WEB_ORIGIN",
         "API_INTERNAL_URL",
+        "NEXT_PUBLIC_REALTIME_URL",
         "DATABASE_URL",
         "REDIS_URL",
         "SESSION_SECRET",
@@ -18,7 +21,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
-      "env": ["API_INTERNAL_URL", "DATABASE_URL"]
+      "env": ["API_INTERNAL_URL", "NEXT_PUBLIC_REALTIME_URL", "DATABASE_URL"]
     },
     "lint": { "dependsOn": ["^lint"] },
     "typecheck": { "dependsOn": ["^typecheck"] },

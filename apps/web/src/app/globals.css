@@ -1897,3 +1897,25 @@ legend {
     font-size: 9px;
   }
 }
+/* A small connection indicator; REST remains available during reconnects. */
+.realtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #64748b;
+  max-width: 155px;
+}
+.realtime-dot-offline {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .realtime-status {
+    max-width: 90px;
+    font-size: 10px;
+  }
+}

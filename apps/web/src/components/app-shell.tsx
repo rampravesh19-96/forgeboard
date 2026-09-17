@@ -25,6 +25,7 @@ import {
 import type { Dashboard, Session, Workspace } from '@forgeboard/types';
 import { api, ApiError, keys } from '@/lib/api';
 import { Avatar, ErrorState, Loading, Modal } from './ui';
+import { RealtimeStatus } from './realtime-status';
 
 interface WorkspaceContext {
   session: Session;
@@ -280,7 +281,7 @@ export function AppShell({
                 <span>Search anything…</span>
                 <kbd>⌕</kbd>
               </button>
-              <span className="demo-label">Demo</span>
+              <RealtimeStatus key={workspace.id} workspaceId={workspace.id} />
               <details className="user-menu">
                 <summary aria-label="User menu">
                   <Avatar user={session.data.user} small />

@@ -13,19 +13,20 @@ A working portfolio demo of a multi-tenant project management application. Explo
 - Desktop drag-and-drop plus status selectors and up/down controls for keyboard and touch users.
 - Task detail dialogs with editing, deletion, comments, and activity history.
 - Redis dashboard caching with a short TTL and mutation invalidation; database fallback when Redis is unavailable.
+- Authenticated, workspace-scoped realtime refresh over Socket.IO for task, comment, and project changes.
 
-All seeded people, organizations, and content are fictional demo data. Counts and progress in the application come from the API, not hard-coded metrics. Payments, AI, WebSockets, admin systems, production identity, and CI/CD are not implemented.
+All seeded people, organizations, and content are fictional demo data. Counts and progress in the application come from the API, not hard-coded metrics. Payments, AI, admin systems, and production identity are intentionally out of scope. Deployment is not live yet.
 
 ## Stack and structure
 
 | Area     | Stack                                                                              |
 | -------- | ---------------------------------------------------------------------------------- |
 | Frontend | Next.js 16 App Router, React 19, strict TypeScript, Tailwind CSS 4, TanStack Query |
-| Backend  | NestJS 12, REST, class-validator DTOs, centralized errors                          |
+| Backend  | NestJS 12, REST, Socket.IO, class-validator DTOs, centralized errors               |
 | Database | PostgreSQL 17, Prisma 6.19, checked-in SQL migration                               |
 | Cache    | Redis 7, node-redis                                                                |
 | Tooling  | pnpm 10.33, Turborepo, ESLint, Prettier                                            |
-| Tests    | Node test runner, Nest testing utilities, Playwright                               |
+| Tests    | Node test runner, Nest testing utilities, Socket.IO client, Playwright             |
 
 ```text
 apps/
@@ -110,6 +111,57 @@ pnpm --filter @forgeboard/web exec playwright install chromium
 
 Playwright starts its own frontend on port 3100 and intercepts API requests with test fixtures. It verifies navigation, Kanban moves, comments, mobile navigation, and unauthenticated redirects. These are **frontend contract tests**, not a claim of live database end-to-end coverage. API tests run real HTTP endpoints with a substituted Prisma provider for auth, tenant checks, and validation; service tests verify task ordering and invalid assignees. The health test uses the real application module without needing a database connection.
 
+## Realtime collaboration and security
+
+REST remains authoritative and PostgreSQL is the source of truth. After a task,
+comment, or project transaction succeeds and the affected Redis cache is
+invalidated, the API emits an identifier-only workspace change notification.
+Clients coalesce notifications and refetch TanStack Query data; they never apply
+event payloads as database state. Reconnects also trigger a refresh. A task form
+preserves an unsaved local draft if a remote refresh changes that task.
+
+The HttpOnly session cookie never crosses to a separately hosted WebSocket API.
+Instead, an authenticated REST request mints a purpose-bound ticket valid for 60
+seconds; it is supplied only in the Socket.IO handshake. The gateway checks the
+exact `WEB_ORIGIN`, ticket expiry, workspace membership, and an optional project
+filter before subscribing. It repeats membership checks at delivery time and
+disconnects expired or revoked sockets. Notifications contain no task/comment
+content. This provides tenant-scoped fanout, while REST authorization remains the
+final authority.
+
+```mermaid
+flowchart LR
+  Browser[Next.js browser] -->|credentialed REST| API[NestJS API]
+  Browser -->|short-lived ticket / Socket.IO| API
+  API -->|Prisma transactions| Postgres[(PostgreSQL)]
+  API -->|dashboard cache| Redis[(Redis)]
+  API -->|invalidate then notify| Browser
+```
+
+Task ordering and project archival share a board-row lock in their transactions.
+This prevents a task write that started concurrently with archival from committing
+against an archived board. The database transaction remains responsible for
+ordering, comments, and activity persistence.
+
+### Real database browser verification
+
+With the API on port 4000 and web app on `http://localhost:3000`, run
+`pnpm --filter @forgeboard/web test:real`. This separate suite loads the existing
+root `.env` and requires migrated, seeded PostgreSQL and a reachable Redis. It
+does not start containers, run migrations, seed, or intercept API requests.
+If Redis already runs on the host, do not start a second Redis container.
+
+The test signs in through the UI, opens seeded content, creates a project and
+tasks, edits fields, moves and reorders tasks (including the final position),
+reloads, and verifies comments and activity. Direct PostgreSQL reads confirm
+persistence; Redis checks confirm connectivity, cache TTL, and invalidation.
+It also signs a second independent browser context in, verifies a live Socket.IO
+connection, and confirms its open task dialog receives a new comment without a
+manual refresh. Browser errors and failed API responses fail the test. Screenshots are stored
+under `apps/web/test-results/real`. Each run retains its clearly named
+`E2E verification <timestamp>` project and fictional records; existing data is
+not reset or deleted. The default browser suite remains fixture-based.
+
 ## Seed and migration workflow
 
 The seed uses stable UUIDs derived from fixture keys and a fixed date anchor (`DEMO_SEED_DATE`, default `2026-09-16`). It creates each missing workspace in a transaction, skips existing workspaces, and preserves user edits. Change the anchor before the first seed to shift due dates. Running seed twice does not duplicate demo content.
@@ -134,3 +186,17 @@ Sessions are HMAC-signed, expire after eight hours, and use HttpOnly, SameSite=L
 - Forbidden request origin: make `WEB_ORIGIN` match the actual web URL.
 
 See [architecture](docs/architecture.md) for request flow, tenancy boundaries, API routes, cache behavior, and known tradeoffs. This repository is a functional demo, not a production-readiness claim.
+
+## CI and intended deployment
+
+GitHub Actions runs on pull requests and `main` pushes: frozen dependency install,
+Prisma generation, typecheck, lint, formatting, production builds, API/realtime
+tests, fixture browser tests, and the disposable PostgreSQL/Redis real-browser
+suite. CI uses only service-container credentials; it does not read local `.env`.
+
+The intended deployment is a Vercel-compatible Next.js frontend plus a
+long-running Render-compatible NestJS/Socket.IO service, with Neon-compatible
+PostgreSQL and a TCP/TLS Redis provider such as Upstash. Set `WEB_ORIGIN`,
+`API_INTERNAL_URL`, and `NEXT_PUBLIC_REALTIME_URL` to the final HTTPS hosts at
+deployment time; set `DATABASE_URL`, `REDIS_URL`, and `SESSION_SECRET` only in
+the API environment. Do not deploy with demo credentials or the example secret.
