@@ -62,7 +62,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-PowerShell: `Copy-Item .env.example .env`. Set `SESSION_SECRET` in `.env` to a random value of at least 32 characters. The example placeholder is intentionally rejected. Generate a value with:
+PowerShell: `Copy-Item .env.example .env`. Set `SESSION_SECRET` in `.env` to a random value of at least 32 characters. The example placeholder is intentionally rejected. For the local fictional portfolio demo, explicitly set `DEMO_AUTH_ENABLED=true`; it remains disabled when that variable is absent. Generate a session secret with:
 
 ```sh
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -172,7 +172,7 @@ Edit `apps/api/prisma/schema.prisma`, run `pnpm db:migrate --name your_change`, 
 
 ## Demo authentication limitations
 
-This is deliberately public demo authentication, not a production identity platform. With `DEMO_AUTH_ENABLED=true`, any visitor can sign in as the same seeded Alex account and access its two workspaces. There is no password, OAuth, invitation flow, or role-based administration. Workspace membership is still enforced by the API; arbitrary tenant/resource IDs do not grant access.
+This is deliberately public demo authentication, not a production identity platform. Only when `DEMO_AUTH_ENABLED=true` is explicitly configured, any visitor can sign in as the same seeded Alex account and access its two workspaces; it is disabled by default. There is no password, OAuth, invitation flow, or role-based administration. Workspace membership is still enforced by the API; arbitrary tenant/resource IDs do not grant access.
 
 Sessions are HMAC-signed, expire after eight hours, and use HttpOnly, SameSite=Lax cookies. Production mode enables Secure cookies and therefore requires HTTPS. Mutation requests require an exact allowed Origin to guard against cross-site writes. Logout clears the browser cookie; stateless tokens are not individually revocable. Rotating the session secret invalidates all sessions. Keep demo deployments isolated and never store real confidential information in them.
 

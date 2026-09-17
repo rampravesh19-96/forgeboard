@@ -7,6 +7,43 @@ import { configureApp } from '../dist/app.js';
 import { PrismaService } from '../dist/database/prisma.service.js';
 import { readSession, signSession } from '../dist/auth/session.js';
 import { TasksService } from '../dist/tasks/tasks.service.js';
+import { AuthController } from '../dist/auth/auth.controller.js';
+
+test('demo sign-in is disabled by default and requires explicit opt-in', async () => {
+  const prior = process.env.DEMO_AUTH_ENABLED;
+  const priorSecret = process.env.SESSION_SECRET;
+  const cookies = [];
+  const controller = new AuthController({
+    user: {
+      findUnique: async () => ({
+        id: 'demo-user',
+        email: 'alex@forgeboard.demo',
+      }),
+    },
+  });
+  try {
+    delete process.env.DEMO_AUTH_ENABLED;
+    await assert.rejects(
+      controller.demo({ cookie: (...args) => cookies.push(args) }),
+      (error) => error.status === 503,
+    );
+    assert.equal(cookies.length, 0);
+
+    process.env.DEMO_AUTH_ENABLED = 'true';
+    process.env.SESSION_SECRET = 'test-only-demo-sign-in-secret-123456789';
+    assert.deepEqual(
+      await controller.demo({ cookie: (...args) => cookies.push(args) }),
+      { user: { id: 'demo-user', email: 'alex@forgeboard.demo' } },
+    );
+    assert.equal(cookies.length, 1);
+    assert.equal(cookies[0][2].httpOnly, true);
+  } finally {
+    if (prior === undefined) delete process.env.DEMO_AUTH_ENABLED;
+    else process.env.DEMO_AUTH_ENABLED = prior;
+    if (priorSecret === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = priorSecret;
+  }
+});
 
 test('HTTP movement accepts null/omitted anchors, validates UUIDs, and retains tenant guards', async () => {
   const secret = 'test-only-movement-contract-secret-123456789';
