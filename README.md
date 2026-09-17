@@ -2,6 +2,32 @@
 
 A working portfolio demo of a multi-tenant project management application. Explore a populated workspace, organize projects on Kanban boards, assign tasks, and discuss work with a fictional team.
 
+> **Live Demo:** [forgeboard-web-three.vercel.app](https://forgeboard-web-three.vercel.app)
+
+The live portfolio uses intentional one-click fictional demo authentication—no email or password is required. It signs visitors into a seeded demo workspace; do not use it for sensitive data.
+
+## Product screenshots
+
+### Kanban board
+
+![ForgeBoard Kanban board](docs/screenshots/forgeboard-kanban-board.png)
+
+### Dashboard
+
+![ForgeBoard dashboard](docs/screenshots/forgeboard-dashboard.png)
+
+### Projects
+
+![ForgeBoard projects](docs/screenshots/forgeboard-projects.png)
+
+### Task details
+
+![ForgeBoard task details](docs/screenshots/forgeboard-task-details.png)
+
+### Realtime collaboration
+
+![ForgeBoard realtime collaboration](docs/screenshots/forgeboard-realtime.png)
+
 ## Implemented experience
 
 - One-click demo sign-in as Alex Morgan; expiring signed HttpOnly cookie sessions.
@@ -15,7 +41,7 @@ A working portfolio demo of a multi-tenant project management application. Explo
 - Redis dashboard caching with a short TTL and mutation invalidation; database fallback when Redis is unavailable.
 - Authenticated, workspace-scoped realtime refresh over Socket.IO for task, comment, and project changes.
 
-All seeded people, organizations, and content are fictional demo data. Counts and progress in the application come from the API, not hard-coded metrics. Payments, AI, admin systems, and production identity are intentionally out of scope. Deployment is not live yet.
+All seeded people, organizations, and content are fictional demo data. Counts and progress in the application come from the API, not hard-coded metrics. Payments, AI, admin systems, and production identity are intentionally out of scope. The portfolio demo is live on Vercel with a Render API, Neon PostgreSQL, and hosted Redis.
 
 ## Stack and structure
 
@@ -187,16 +213,18 @@ Sessions are HMAC-signed, expire after eight hours, and use HttpOnly, SameSite=L
 
 See [architecture](docs/architecture.md) for request flow, tenancy boundaries, API routes, cache behavior, and known tradeoffs. This repository is a functional demo, not a production-readiness claim.
 
-## CI and intended deployment
+## CI and production deployment
 
 GitHub Actions runs on pull requests and `main` pushes: frozen dependency install,
 Prisma generation, typecheck, lint, formatting, production builds, API/realtime
 tests, fixture browser tests, and the disposable PostgreSQL/Redis real-browser
 suite. CI uses only service-container credentials; it does not read local `.env`.
 
-The intended deployment is a Vercel-compatible Next.js frontend plus a
-long-running Render-compatible NestJS/Socket.IO service, with Neon-compatible
-PostgreSQL and a TCP/TLS Redis provider such as Upstash. Set `WEB_ORIGIN`,
-`API_INTERNAL_URL`, and `NEXT_PUBLIC_REALTIME_URL` to the final HTTPS hosts at
-deployment time; set `DATABASE_URL`, `REDIS_URL`, and `SESSION_SECRET` only in
-the API environment. Do not deploy with demo credentials or the example secret.
+The live deployment uses a Vercel Next.js frontend and a long-running Render
+NestJS/Socket.IO service, backed by Neon PostgreSQL and hosted Redis. Production
+verification confirmed demo authentication, PostgreSQL-backed persistence, a
+live WebSocket connection, and two-browser task/comment synchronization. Redis
+cache hits and TTL were not directly externally verified. `WEB_ORIGIN`,
+`API_INTERNAL_URL`, and `NEXT_PUBLIC_REALTIME_URL` are configured as final HTTPS
+hosts; `DATABASE_URL`, `REDIS_URL`, and `SESSION_SECRET` remain API-only
+environment values.
